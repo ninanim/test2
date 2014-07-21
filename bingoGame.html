@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>Starter Template for Bootstrap</title>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+
+<!-- Latest compiled and minified CSS -->
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+
+<!-- Optional theme -->
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap-theme.min.css">
+
+<!-- Latest compiled and minified JavaScript -->
+<script src="//netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+
+<style>
+	.black {
+		background-color: black
+	}
+	.yellow {
+		background-color: yellow
+	}
+	.black.yellow{
+		background-color: black
+	}
+	table, tbody, tr{
+        display: block
+    }
+
+
+
+</style>
+
+<script src = "http://165.243.63.33:80/socket.io/socket.io.js"></script>
+
+<script >
+	var num = 0;
+	function createInput(number){
+		//num = $("#inputNum").val();
+		num = number;
+		if(num=='' || num==0 || isNaN(num)==true){
+			alert('1ÀÌ»óÀÇ ¼ýÀÚ ÀÔ·Â');
+			return;
+		}
+		$('#ready').show();
+		$('#random').show();
+
+		var txt = '';
+		for(var i=0; i<num; i++){
+			txt += "<tr>"
+			for (var j=0; j<num; j++){
+				txt += "<td><input type = 'text' class = 'form-control' placeholder='Fill in the blank' id = '" +  i + j + "'></td>";
+			}
+			txt +="</br>";
+		}
+		$('#inputTable').html(txt);
+		$('#inputTable').show();
+
+	}
+
+	
+	function shuffle(o){
+	    for(var j, x, i = o.length; i; j = Math.floor(Math.random() * i), x = o[--i], o[i] = o[j], o[j] = x);
+	    return o;
+	}
+
+
+
+	var socket = io.connect('http://'+window.location.hostname+':80');
+	var startFlag = false;
+	socket.on('ready alert', function(data){
+		console.log("ready alert");
+		startFlag = true;
+		$('#playerCount').show();
+		$('#bingoCount').show();
+
+
+		if(data.turn=='you'){
+			clickable = true;
+			$('#playerCount').html('<div class="alert alert-success">your turn</div>');			
+		} else {
+			clickable = false;
+			$('#playerCount').html('<div class="alert alert-danger">Not your turn>'+data.who+'\'s turn<div>');
+		}		
+		console.log("who?:"+data.who);
+	});
+
+	var clickable = false;
+
+	function insertTable(){
+		console.log('ready clicked');
+		socket.emit('ready alert', {name:$('#userName').val()});
+		
+		var txt = '';
+ 		for(var i=0; i<num; i++){
+			txt += "<tr>"
+			for (var j=0; j<num; j++){
+				var val = $("#"+i+j).val();
+				if(val=='' || val ==null){
+					alert('empty td');
+					return;
+				}
+				txt += "<td><button id = 'tb" + i + j + "' abbr = 'false' class='btn  btn-default btn-block' style='display:block; min-width:30px'>"+ val + "</button></td>";
+			}
+			txt +="</tr>";
+		} 
+
+		$('#gameTable').html(txt);
+		$('#gameTable').show();
+		$('#inputTable').hide();
+		$('#ready').hide();
+		$('#random').hide();
+		$('#gameTable').bind("click", clickCell);
+		$('#reset').hide();
+
+	}
+	
+	function random(){
+		var txt = '';
+		var arr = [];
+		var count = 0;
+		var no = 1;
+		for(var idx=0; idx<num*num; idx++){
+			arr[idx] = no;
+			no++;
+		}
+		arr = shuffle(arr);
+		for(var i=0; i<num; i++){
+			txt += "<tr>"
+			for (var j=0; j<num; j++){
+				var val  = arr[count++];
+				txt += "<td id = 'tb" + i + j + "' abbr = 'false' width = '150' height = '30'>"+ val + "</td>";
+				$('#' + i+j).val(val);
+			}
+			txt +="</tr>";
+		}
+	}
+	
+	
+	var count = 0;
+
+	
+	function clickCell(e){
+		if(clickable){
+			var td = e.target;
+
+			var id = td.getAttribute("id");
+			//var tNum = id.split("")[1]; //1 or 2
+			var id1 = id.split("")[2]; // i
+			var id2 = id.split("")[3]; // j
+			var val = $('#'+ id1 + id2).val();
+
+			if(bingoCheck(td, val, id1, id2)){
+				socket.emit('game end', 'You lost');
+				startFlag = false;
+				alert('you win');
+				count = 0;
+				$("#gameTable").unbind("click", clickCell);
+				$('#dependsOnUser').html('<h3>Game Over</h3>');
+			} else {
+				console.log('Not Game Over!!');
+				socket.emit('click', {'val' : val});
+			}	
+			clickable = false;
+		}else{
+			alert("Not your turn");
+		}	
+	} 
+
+	socket.on('opposite click', function(data){
+		console.log('opposite click');
+		partner(data);
+		//$("#gameTable").bind("click", clickCell);
+	});
+	
+	
+	function partner(data){
+		var val = data['val'];
+		console.log('opposite click value : ' + val);
+		clickable=true;
+		for(var i = 0; i<num; i++) {
+			for(var j=0; j<num; j++){
+				if($('#' + i + j).val() == val){
+					console.log('find!!!');
+					bingoCheck($("#tb" + i + j), val, i, j);
+				}
+			}
+		}
+	}
+	
+	function bingoCheck(td, val, id1, id2){
+		
+		console.log('bingoCheck for ' + val);
+		console.log('count : ' + count);
+		/*$(td).addClass("yellow");*/
+		$(td).attr("abbr", "true");
+		$(td).attr("class", "btn  btn-success btn-block");
+		$(td).addClass("disabled");
+		
+		var flag = true;
+		//°¡·Î·Î µÈ ºù°í Ã£±â
+		
+		for(var j=0; j<num; j++){
+			if($('#' + "tb"+ id1 + j).attr("abbr")=='false'){
+				flag = false;
+				
+			}
+			if(j==num-1&&flag){
+				bingoCount();
+			}
+		}
+		
+		flag = true;
+
+		//¼¼·Î·Î µÈ ºù°í Ã£±â
+		for(var i=0; i<num; i++){
+			if($('#'+"tb" + i + id2).attr("abbr")=='false'){
+				flag = false;
+			
+			}
+			
+
+			if(i==num-1&&flag){
+				bingoCount();
+			}
+		}
+
+		flag = true;
+
+				//´ë°¢¼± ºù°í Ã£±â1
+		if(id1==id2){
+			for(var i=0; i<num; i++){
+				if($('#'+"tb" + i + i).attr("abbr")=='false'){
+					flag = false;
+					
+				}
+				if(i==num-1&&flag){
+					bingoCount();
+				}
+				
+			}
+			
+		}
+		
+		flag = true;
+
+		//´ë°¢¼± ºù°í Ã£±â2
+		if((Number(id1)+Number(id2))==(num-1)){
+			for(var i=0; i<num; i++){
+				if($('#'+"tb" + i + (num-1-i)).attr("abbr")=='false'){
+					flag = false;
+					break;
+				}
+				if(i==num-1&&flag){
+					bingoCount();
+				}
+				
+			}
+			
+		}
+		return gameEnd();
+	}
+	
+	function gameEnd(){
+		if(count >= num){
+			console.log('gameEnd ->' + true);
+			return true;
+		} else {
+			console.log('gameEnd ->' + false);
+			return false;	
+		}
+	}
+
+	socket.on('game end', function(data){
+		if(startFlag){
+			count = 0;
+			$("#gameTable").unbind("click", clickCell);
+			$('#dependsOnUser').html('<h3>Game Over</h3>');
+			startFlag = false;
+			alert(data);			
+		}
+
+	})
+	
+	function bingoCount() {
+		count++;
+		var text = '<div class="progress">'+
+  				'<div class="progress-bar progress-bar-success" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100" style="width: '+ (count/num)*100 + '%">'+
+    			'<span>' + count +' bingo success</span>'+
+  				'</div>' +
+				'</div>';
+		$('#bingoCount').html(text);
+	}
+
+	function createRoom() {
+		if($('#inputNum').val()==0 || $('#inputNum').val()==null || $('#inputNum').val()=='') {
+			alert('Number');
+			return;
+		}
+		if($('#userNum').val()==0 || $('#userNum').val()==null || $('#userNum').val()==''){
+			alert('Number');
+			return;
+		}
+		socket.emit('create room', {'inputNum' : $('#inputNum').val(), 'userNum' : $('#userNum').val()});
+	}
+
+	socket.on('first user', function(data){
+		if(!startFlag){
+			var text = '<h2 class="form-signin-heading">Fill in the blanks</h2>'+
+	        	'<input type="text" id = "inputNum" class="form-control" placeholder="Size" required autofocus>'+
+	        	'<input type="text" id = "userNum" class="form-control" placeholder="People" required>'+
+	      		'<button class="btn btn-lg btn-primary btn-block" onclick = "createRoom()">Create Room</button>';
+						
+			$('#dependsOnUser').html(text);	
+			$('#tables').hide();
+			$('#playerCount').hide();
+			$('#bingoCount').hide();		
+		} else {
+			
+		}
+
+	});
+
+	socket.on('other user', function(data){
+		var text = '<h3>Waiting</h3>';
+		$('#dependsOnUser').html(text);
+		$('#tables').hide();
+		$('#playerCount').hide();
+		$('#bingoCount').hide();
+	});
+
+
+	socket.on('ready invalid', function(data){
+		var text = '<h3>You cannot enter the room...</h3>';
+		$('#dependsOnUser').html(text);
+	})
+
+
+	socket.on('insert table', function(data){
+		console.log(data['startFlag']);
+		if(!data['startFlag']){
+			createInput(data['inputNum']);
+			var text = '<h3>Click '+"'Ready'" + 'when you are ready</h3>';
+			$('#gameTable').hide();
+			console.log('playerCount bingoCount reset');
+			$('#bingoCount').html('<div class="progress">'+
+  				'<div class="progress-bar progress-bar-success" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100" style="width: '+ (count/num)*100 + '%">'+
+    			'<span>' + count +' bingo success</span>'+
+  				'</div>' +
+				'</div>');
+			$('#playerCount').hide();
+			$('#bingoCount').hide();
+			$('#dependsOnUser').html(text);
+			$('#tables').show();
+		}
+	})
+	
+	socket.on('ready click', function(data){
+		console.log('ready click');
+		console.log(data);
+		console.log(startFlag);
+		if(!startFlag){
+			console.log('readyCount : ' + data['readyCount'] + ',  userNum : ' + data['userNum']);
+			var text = '<div class="progress">' +
+		  				'<div class="progress-bar progress-bar-warning" role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: '+ (data['readyCount']/data['userNum'])*100 + '%">' +
+		    			'<span>' + (data['readyCount']/data['userNum'])*100 + '% ready</span>' +
+		  				'</div>' +
+						'</div>';
+			$('#dependsOnUser').html(text);
+			if(data['readyCount'] == data['userNum']){
+				$('#dependsOnUser').html('<h3>Game Start!!!</h3>');
+			}			
+		} else {
+			socket.emit('game stop', 'Game stop!!');
+		}
+
+	})
+
+	socket.on('reset', function(data){
+
+		$('#reset').show();
+	})
+
+	function resetGame(){
+		socket.emit('restart', 'restart');
+	}
+
+
+</script>
+
+</head>
+<body>
+ 
+
+
+<div class = "container">
+	<div class = "col-lg-4"></div>
+	<div class = "col-lg-4" id = "dependsOnUser">
+		
+	</div>
+	<div class = "col=lg-4"></div>
+</div>
+
+<div class = "container">
+	<div class = "col-lg-4"></div>
+	<div class = "col-lg-4" id = 'tables'>
+		<table  id = "inputTable" style="display:block;"></table>
+		<input type = "text" id = "userName">
+		<button onclick = "random()" class = "btn btn-default" id = 'random' style = 'display:none;min-width:100px'>random</button>
+		<button onclick = "insertTable()" class = "btn btn-warning" id = 'ready' style = 'display:none;min-width:100px'>Ready</button>
+		
+		<table id = "gameTable" style="display:block;"></table>
+	</div>
+	<div class = "col-lg-4"></div>
+</div>
+
+
+<div class = "container">
+	<div class = "col-lg-4" ></div>
+	<div class = "col-lg-4" id = "playerCount"></div>
+</div>
+
+<div class = "container">
+	<div class = "col-lg-4"></div>
+	<div class = "col-lg-4" id = "bingoCount"></div>
+</div>
+
+<div class = "container">
+	<div class = "col-lg-4"></div>
+	<div class = "col-lg-4"><button onclick = "resetGame()" class = "btn btn-default" id = 'reset' style = 'display:none;min-width:100px;display:none'>Reset</button></div>
+</div>
+
+
+</body>
+
+</html>
